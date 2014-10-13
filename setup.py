@@ -1,5 +1,7 @@
 import json
+from collections import Counter
 from urllib.request import urlopen
+from functools import reduce
 
 
 def get_followers(_id):
@@ -10,7 +12,7 @@ def get_followers(_id):
     return data['response']['users']['items']
 
 
-def get_followers_in_range(start, end, completed, summary):
+def get_followers_in_range(start, end, completed, counter):
     """
     make request to api of vk and modify followers of users
     as dictionary in the following format: "uid: count of followers".
@@ -18,10 +20,7 @@ def get_followers_in_range(start, end, completed, summary):
     for _id in range(start, end):
         user_subs = get_followers(_id)
         for sub in user_subs:
-            if sub not in summary:
-                summary[sub] = 1
-            else:
-                summary[sub] += 1
+            counter[sub] += 1
         print(_id, "/", end)
     completed.append(1)  # specify that thread is completed
 
@@ -29,7 +28,6 @@ def get_followers_in_range(start, end, completed, summary):
 if __name__ == "__main__":
     import _thread
     import math
-    import operator
 
     COUNT_OF_THREADS = 10
     COUNT_OF_USERS_TO_TEST = 100
@@ -39,32 +37,23 @@ if __name__ == "__main__":
     count_for_thread = math.floor(COUNT_OF_USERS_TO_TEST / COUNT_OF_THREADS)
     l = _thread.allocate_lock()
 
-    list_summary = []
+    list_counters = []
 
     # run threads
     for i in range(COUNT_OF_THREADS):
-        _sum = {}
+        counter = Counter()
         _thread.start_new_thread(get_followers_in_range, (
-            count_for_thread*i + 1, count_for_thread*(i+1), threads_completed, _sum)
+            count_for_thread*i + 1, count_for_thread*(i+1), threads_completed, counter)
         )
-        list_summary.append(_sum)
+        list_counters.append(counter)
 
     # wait for completing all threads
     while len(threads_completed) != COUNT_OF_THREADS:
         pass
 
     # merge results from threads
-    dict_subs = {}
-    for i in range(COUNT_OF_THREADS):
-        for uid, val in list_summary[i].items():
-            if uid not in dict_subs:
-                dict_subs[uid] = val
-            else:
-                dict_subs[uid] += val
-
-    # sort dictionary and get first 30 users with max followers as list
-    list_subs = list(sorted(dict_subs.items(), key=operator.itemgetter(1), reverse=True)[:COUNT_OF_RESULTS])
+    subs_counter = reduce(lambda x, y: x+y, list_counters, Counter())
 
     # show results
-    for uid, val in list_subs:
+    for uid, val in subs_counter.most_common(COUNT_OF_RESULTS):
         print("пользователь \"%s\", подписчики: %s" % (uid, val,))
